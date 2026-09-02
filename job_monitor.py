@@ -404,14 +404,25 @@ def save_database(df):
 # EMAIL
 # --------------------------------------------------------------------------
 
-def build_email_body(new_jobs, updated_jobs, run_status, profile_name):
+def _html_escape(value):
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def build_email_body_plain(new_jobs, updated_jobs, run_status, profile_name):
+    """Plain-text fallback for email clients that don't render HTML."""
     lines = [f"Job Monitor digest for {profile_name}", "=" * 50, ""]
 
     def section(title, jobs):
         out = [title, "-" * len(title), ""]
         for i, job in enumerate(sorted(jobs, key=lambda j: -j.relevance_score), 1):
             out += [
-                f"{i}. [{job.relevance_score:.0f}] {job.company} — {job.job_title}",
+                f"{i}. [{job.relevance_score:.0f}] {job.company} - {job.job_title}",
                 f"   Location: {job.location or 'Not specified'}",
                 f"   Why: {job.relevance_reasons or 'n/a'}",
                 f"   Apply: {job.job_url}",
@@ -428,13 +439,102 @@ def build_email_body(new_jobs, updated_jobs, run_status, profile_name):
 
     failed = [s for s in run_status if s[1] == "FAILED"]
     if failed:
-        lines += ["", "Sources that could not be checked this run:", "-" * 40]
+        lines += ["", "Companies that could not be checked this run:", "-" * 40]
         lines += [f"  - {name}: {err}" for name, _, _, err in failed]
 
     return "\n".join(lines)
 
 
-def send_email(subject, body):
+def build_email_body_html(new_jobs, updated_jobs, run_status, profile_name):
+    """Clean HTML digest — this is what most inboxes (Gmail, Outlook, etc.) will show."""
+
+    def job_card(job):
+        return f"""
+        <tr>
+          <td style="padding:14px 16px;border:1px solid #e2e2e2;border-radius:8px;
+                     display:block;margin-bottom:10px;">
+            <div style="font-size:15px;font-weight:600;color:#111;">
+              {_html_escape(job.job_title)}
+            </div>
+            <div style="font-size:13px;color:#555;margin-top:2px;">
+              {_html_escape(job.company)} &middot; {_html_escape(job.location or "Location not specified")}
+            </div>
+            <div style="font-size:12px;color:#888;margin-top:6px;">
+              Match score: <b>{job.relevance_score:.0f}</b> &middot; {_html_escape(job.relevance_reasons or "n/a")}
+            </div>
+            <div style="margin-top:10px;">
+              <a href="{_html_escape(job.job_url)}"
+                 style="display:inline-block;padding:8px 14px;background:#111;color:#fff;
+                        text-decoration:none;border-radius:6px;font-size:13px;">
+                View &amp; Apply
+              </a>
+            </div>
+          </td>
+        </tr>"""
+
+    def section(title, jobs):
+        cards = "".join(job_card(j) for j in sorted(jobs, key=lambda j: -j.relevance_score))
+        return f"""
+        <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:0.04em;
+                   color:#111;margin:28px 0 10px;">{_html_escape(title)}</h3>
+        <table role="presentation" width="100%" style="border-collapse:separate;border-spacing:0 10px;">
+          {cards}
+        </table>"""
+
+    body_sections = []
+    if new_jobs:
+        body_sections.append(section(f"New matching jobs ({len(new_jobs)})", new_jobs))
+    if updated_jobs:
+        body_sections.append(section(f"Updated matching jobs ({len(updated_jobs)})", updated_jobs))
+    if not new_jobs and not updated_jobs:
+        body_sections.append(
+            '<p style="color:#555;font-size:14px;">No new or updated matching jobs this run.</p>'
+        )
+
+    failed = [s for s in run_status if s[1] == "FAILED"]
+    failed_html = ""
+    if failed:
+        items = "".join(
+            f'<li style="margin-bottom:4px;">{_html_escape(name)} '
+            f'<span style="color:#999;">— {_html_escape(err[:120])}</span></li>'
+            for name, _, _, err in failed
+        )
+        failed_html = f"""
+        <details style="margin-top:26px;">
+          <summary style="font-size:12px;color:#888;cursor:pointer;">
+            {len(failed)} companies could not be checked this run
+          </summary>
+          <ul style="font-size:12px;color:#999;margin-top:8px;padding-left:18px;">
+            {items}
+          </ul>
+        </details>"""
+
+    return f"""\
+<!DOCTYPE html>
+<html>
+  <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" style="background:#f5f5f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" style="background:#fff;border-radius:10px;
+                 padding:28px 28px 20px;">
+            <tr>
+              <td>
+                <div style="font-size:18px;font-weight:700;color:#111;">Job Monitor</div>
+                <div style="font-size:13px;color:#888;margin-top:2px;">Daily digest for {_html_escape(profile_name)}</div>
+                {"".join(body_sections)}
+                {failed_html}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
+
+def send_email(subject, plain_body, html_body):
     sender = os.environ.get("GMAIL_ADDRESS")
     app_password = os.environ.get("GMAIL_APP_PASSWORD")
     recipient = os.environ.get("RECIPIENT_EMAIL", sender)
@@ -448,11 +548,15 @@ def send_email(subject, body):
         )
         return False
 
-    msg = MIMEMultipart()
+    msg = MIMEMultipart("alternative")
     msg["From"] = sender
     msg["To"] = recipient
     msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
+    # Attach plain text first, HTML second — email clients render the last
+    # part they understand, so HTML-capable clients show the pretty version
+    # and plain-text-only clients fall back cleanly.
+    msg.attach(MIMEText(plain_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
 
     with smtplib.SMTP(smtp_server, smtp_port) as server:
         server.starttls()
@@ -503,8 +607,9 @@ def run():
     should_send = bool(new_jobs or updated_jobs) or email_cfg.get("send_empty_report", False)
     if should_send:
         subject = f"Job Monitor: {len(new_jobs)} new, {len(updated_jobs)} updated"
-        body = build_email_body(new_jobs, updated_jobs, run_status, profile["name"])
-        send_email(subject, body)
+        plain_body = build_email_body_plain(new_jobs, updated_jobs, run_status, profile["name"])
+        html_body = build_email_body_html(new_jobs, updated_jobs, run_status, profile["name"])
+        send_email(subject, plain_body, html_body)
     else:
         logger.info("Nothing new to report — no email sent.")
 
