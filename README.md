@@ -1,6 +1,6 @@
 # Job Monitor — automated job-alert emails
 
-Checks ~40 company career pages every day, scores each posting against
+Checks ~40 company career pages every 12 hours, scores each posting against
 your roles/keywords, and emails you only the new or changed matches.
 Runs for free on GitHub's servers — your laptop doesn't need to be on.
 
