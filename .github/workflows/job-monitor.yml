@@ -3,7 +3,7 @@ name: Job Monitor
 on:
   schedule:
     # 04:00 UTC = 9:30 AM IST, every day. Edit the cron to change the time.
-    - cron: "0 4 * * *"
+    - cron: "0 */12 * * *"
   workflow_dispatch: {}   # adds a manual "Run workflow" button on GitHub
 
 permissions:
