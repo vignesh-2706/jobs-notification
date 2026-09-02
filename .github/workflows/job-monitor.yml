@@ -1,0 +1,40 @@
+name: Job Monitor
+
+on:
+  schedule:
+    # 04:00 UTC = 9:30 AM IST, every day. Edit the cron to change the time.
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}   # adds a manual "Run workflow" button on GitHub
+
+permissions:
+  contents: write   # needed so the workflow can commit the updated jobs.xlsx
+
+jobs:
+  check-jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run job monitor
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+        run: python job_monitor.py
+
+      - name: Save updated job database back to the repo
+        run: |
+          git config user.name "job-monitor-bot"
+          git config user.email "job-monitor-bot@users.noreply.github.com"
+          git add jobs.xlsx
+          git diff --cached --quiet || git commit -m "Update jobs.xlsx [automated]"
+          git push
