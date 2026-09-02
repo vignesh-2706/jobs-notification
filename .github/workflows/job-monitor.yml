@@ -37,4 +37,4 @@ jobs:
           git config user.email "job-monitor-bot@users.noreply.github.com"
           git add jobs.xlsx
           git diff --cached --quiet || git commit -m "Update jobs.xlsx [automated]"
-          git push
+          git pull --rebase origin main git push origin main
