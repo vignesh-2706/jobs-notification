@@ -96,7 +96,7 @@
       "7+ years",
       "8+ years",
       "10+ years"],
-    "min_relevance_score": 0
+    "min_relevance_score": 20
   },
 
   "email": {
@@ -107,6 +107,7 @@
   },
 
   "companies": [
+    {"name": "Linkdln","career_url": "https://www.linkedin.com/jobs/search-results/?currentJobId=4462167124&keywords=Software%20Engineer%20or%20AI%20Engineer%2C%20on-site%20or%20hybrid&origin=PREFERENCES_LANDING&originToLandingJobPostings=4462167124%2C4459943027%2C4448177868&geoId=104765567", "source_type": "generic", "enabled": true},
     {"name": "SAP", "career_url": "https://jobs.sap.com", "source_type": "generic", "enabled": true},
     {"name": "Microsoft", "career_url": "https://jobs.careers.microsoft.com", "source_type": "generic", "enabled": true},
     {"name": "Google", "career_url": "https://www.google.com/about/careers/applications/jobs/results", "source_type": "generic", "enabled": true},
