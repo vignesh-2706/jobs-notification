@@ -1,0 +1,54 @@
+name: Job Monitor
+
+on:
+  schedule:
+    # 04:00 UTC = 9:30 AM IST, every day. Edit the cron to change the time.
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}   # adds a manual "Run workflow" button on GitHub
+
+permissions:
+  contents: write   # needed so the workflow can commit updated history files
+
+jobs:
+  check-jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run job monitor for every person in configs/
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+        run: |
+          set -e
+          for f in configs/*.json; do
+            base=$(basename "$f")
+            if [[ "$base" == _* ]]; then
+              echo "Skipping template/hidden file: $f"
+              continue
+            fi
+            echo "=============================================="
+            echo "Running job monitor for: $f"
+            echo "=============================================="
+            python job_monitor.py "$f" || echo "!! $f failed, continuing with the rest !!"
+          done
+
+      - name: Save updated history files back to the repo
+        run: |
+          git config user.name "job-monitor-bot"
+          git config user.email "job-monitor-bot@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet || git commit -m "Update job history [automated]"
+          git pull --rebase origin main
+          git push origin main
