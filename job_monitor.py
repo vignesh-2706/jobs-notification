@@ -249,10 +249,80 @@ def fetch_generic(company_cfg):
     return jobs
 
 
+def fetch_adzuna(company_cfg):
+    """
+    source_type='adzuna'. Aggregates real postings from Naukri, Indeed, Shine
+    and thousands of company sites via Adzuna's free developer API.
+    Needs ADZUNA_APP_ID and ADZUNA_APP_KEY env vars (free signup, no card
+    needed): https://developer.adzuna.com/
+    Config fields: 'query' (search term), 'location' (city), optional
+    'country' (defaults to 'in' for India).
+    """
+    app_id = os.environ.get("ADZUNA_APP_ID")
+    app_key = os.environ.get("ADZUNA_APP_KEY")
+    if not app_id or not app_key:
+        raise ValueError("ADZUNA_APP_ID / ADZUNA_APP_KEY env vars are not set")
+
+    query = company_cfg.get("query", "")
+    location = company_cfg.get("location", "")
+    country = company_cfg.get("country", "in")
+
+    url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
+    params = {
+        "app_id": app_id,
+        "app_key": app_key,
+        "what": query,
+        "where": location,
+        "results_per_page": 30,
+        "content-type": "application/json",
+    }
+    data = http_get(url, params=params).json()
+
+    jobs = []
+    for item in data.get("results", []):
+        jobs.append(Job(
+            company=item.get("company", {}).get("display_name", "Unknown"),
+            job_title=item.get("title", ""),
+            location=item.get("location", {}).get("display_name", ""),
+            description=item.get("description", ""),
+            job_url=item.get("redirect_url", ""),
+            source_type="adzuna",
+        ))
+    return jobs
+
+
+def fetch_arbeitnow(company_cfg):
+    """
+    source_type='arbeitnow'. Free, no API key needed. Global tech-job board,
+    good for remote roles. Config field: optional 'query' to filter by
+    keyword client-side (the API itself doesn't support search params).
+    """
+    url = "https://www.arbeitnow.com/api/job-board-api"
+    data = http_get(url).json()
+    query = company_cfg.get("query", "").lower()
+
+    jobs = []
+    for item in data.get("data", []):
+        title = item.get("title", "")
+        if query and query not in title.lower():
+            continue
+        jobs.append(Job(
+            company=item.get("company_name", "Unknown"),
+            job_title=title,
+            location=item.get("location", "") or ("Remote" if item.get("remote") else ""),
+            description=item.get("description", ""),
+            job_url=item.get("url", ""),
+            source_type="arbeitnow",
+        ))
+    return jobs
+
+
 SOURCE_CONNECTORS = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
     "generic": fetch_generic,
+    "adzuna": fetch_adzuna,
+    "arbeitnow": fetch_arbeitnow,
 }
 
 
