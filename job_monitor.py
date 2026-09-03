@@ -466,6 +466,17 @@ EXPERIENCE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Catches "<Any Role> II", "<Any Role> III", "<Any Role> 2", "<Any Role> 3",
+# etc. at the END of a job title — the generic pattern behind seniority
+# suffixes like "Software Engineer II", "Site Reliability Engineer II",
+# "Software Development Engineer III" — WITHOUT needing to hand-list every
+# possible role name it could be attached to. "I" and "1" are deliberately
+# NOT matched here since those usually denote entry-level, not senior.
+LEVEL_SUFFIX_PATTERN = re.compile(
+    r'\b(?:ii|iii|iv|v|vi|2|3|4|5|6)\s*$',
+    re.IGNORECASE,
+)
+
 
 def passes_mandatory_filters(job: Job, profile: dict):
     """
@@ -493,6 +504,11 @@ def passes_mandatory_filters(job: Job, profile: dict):
             lower_bound = int(m.group(1))
             if lower_bound > max_years:
                 return False, f"excluded (needs {m.group(0).strip()}, above your {max_years}-year limit)"
+
+    # 2b. Title-level suffix — catches "<Role> II", "<Role> III" etc.
+    #     generically, regardless of what the role name in front of it is.
+    if LEVEL_SUFFIX_PATTERN.search(title.strip()):
+        return False, f"excluded (title suggests a senior level: '{title.strip()}')"
 
     # 3. Role — job title must contain at least one of your target roles.
     roles = profile.get("job_roles", [])
@@ -534,11 +550,14 @@ def deep_verify_experience(job: Job, profile: dict):
     shortlist (jobs that already passed every other gate and are about to
     be emailed), not on every discovered posting.
 
-    Why this exists: Adzuna/Jooble/etc. only hand us a short teaser
-    snippet, not the full job description. A posting requiring "5-8
-    years" can slip past the coarse filter simply because that line
-    wasn't in the snippet we were given. This fetches the ACTUAL posting
-    page and re-checks against the full text, closing that gap.
+    Only attempted for source types where job_url is a REAL, directly
+    fetchable page (generic company sites, greenhouse, lever). Skipped
+    entirely for adzuna/jooble — their job_url is a tracking/redirect link
+    through their own domain that returns 403 to any non-browser request,
+    every single time. Attempting it there just burns a request and a log
+    line for a fetch that can never succeed; for those, the coarse check
+    against the API's own description field (already run earlier) is the
+    best available signal.
 
     Fails open: if the page can't be fetched (dead link, blocked, slow),
     the job is kept rather than dropped — we only exclude on a positive,
@@ -548,6 +567,10 @@ def deep_verify_experience(job: Job, profile: dict):
     max_years = profile.get("max_experience_years")
     if max_years is None or not job.job_url:
         return True, "no max_experience_years set or no URL to verify"
+
+    NOT_DIRECTLY_FETCHABLE = {"adzuna", "jooble"}
+    if job.source_type in NOT_DIRECTLY_FETCHABLE:
+        return True, f"{job.source_type} URLs are tracking redirects, not fetchable — relying on coarse check only"
 
     try:
         resp = http_get(job.job_url)
