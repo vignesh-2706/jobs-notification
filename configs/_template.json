@@ -1,0 +1,26 @@
+{
+  "_readme": "Copy this file to configs/<friend-name>.json and fill in the fields below. No passwords needed here — email.recipient_email is just an address, not a secret.",
+
+  "profile": {
+    "name": "Friend Name",
+    "job_roles": ["Software Engineer", "SDE"],
+    "keywords": ["Python", "Java", "SQL", "React"],
+    "preferred_locations": ["Bengaluru", "Remote"],
+    "experience_keywords": ["fresher", "entry level", "0-2 years"],
+    "max_experience_years": 2,
+    "exclude_keywords": ["senior", "lead", "principal", "5+ years", "SDE 2", "SDE-2", "SDE III"],
+    "min_relevance_score": 20
+  },
+
+  "email": {
+    "recipient_email": "friend@example.com",
+    "send_empty_report": false
+  },
+
+  "companies": [
+    {"name": "Adzuna - Software Engineer Bangalore", "source_type": "adzuna", "query": "software engineer", "location": "Bangalore", "country": "in", "enabled": true},
+    {"name": "Arbeitnow - Software Engineer", "source_type": "arbeitnow", "query": "software engineer", "enabled": true},
+    {"name": "SAP", "career_url": "https://jobs.sap.com", "source_type": "generic", "enabled": true},
+    {"name": "Zoho", "career_url": "https://www.zoho.com/careers/", "source_type": "generic", "enabled": true}
+  ]
+}
