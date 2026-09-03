@@ -370,39 +370,70 @@ def contains_term(text, term):
     return term in text
 
 
-def score_job(job: Job, profile: dict):
-    haystack = " ".join([job.job_title, job.location, job.description])
-    reasons = []
-    score = 0.0
+EXPERIENCE_PATTERN = re.compile(
+    r'(\d{1,2})\s*(?:\+|to|-)?\s*\d{0,2}\s*\+?\s*(?:years?|yrs?)\b',
+    re.IGNORECASE,
+)
 
+
+def passes_mandatory_filters(job: Job, profile: dict):
+    """
+    Hard pass/fail gate. A job must clear ALL of these to be considered at
+    all — none of this contributes to the score, it's strictly qualify /
+    disqualify. Returns (passes: bool, reason: str).
+    """
+    title = job.job_title
+    full_text = " ".join([job.job_title, job.location, job.description])
+
+    # 1. Exclude keywords — checked across title + location + description,
+    #    not just the title (this was the original bug: "5+ years" written
+    #    in a description was invisible to a title-only check).
     for term in profile.get("exclude_keywords", []):
-        if contains_term(job.job_title, term):
-            job.relevance_score = -1
-            job.relevance_reasons = f"Excluded (matched '{term}')"
-            return job
+        if contains_term(full_text, term):
+            return False, f"excluded (matched '{term}')"
 
-    for role in profile.get("job_roles", []):
-        if contains_term(job.job_title, role):
-            score += 35
-            reasons.append(f"role:{role}")
+    # 2. Numeric experience cutoff — catches "5+ years", "3-5 years" etc.
+    #    even when that exact phrase isn't in your exclude_keywords list.
+    #    Only fires when a number is actually present, so postings with no
+    #    stated experience (common on scraped listings) aren't punished.
+    max_years = profile.get("max_experience_years")
+    if max_years is not None:
+        for m in EXPERIENCE_PATTERN.finditer(full_text):
+            lower_bound = int(m.group(1))
+            if lower_bound > max_years:
+                return False, f"excluded (needs {m.group(0).strip()}, above your {max_years}-year limit)"
 
-    for kw in profile.get("keywords", []):
-        if contains_term(haystack, kw):
-            score += 6
-            reasons.append(f"skill:{kw}")
+    # 3. Role — job title must contain at least one of your target roles.
+    roles = profile.get("job_roles", [])
+    if roles and not any(contains_term(title, r) for r in roles):
+        return False, "no matching role in title"
 
-    for loc in profile.get("preferred_locations", []):
-        if contains_term(job.location, loc) or contains_term(job.job_title, loc):
-            score += 10
-            reasons.append(f"location:{loc}")
+    # 4. Location — only enforced when the posting actually states a
+    #    location; scraped postings with a blank location field aren't
+    #    penalized for a connector limitation that isn't the job's fault.
+    locations = profile.get("preferred_locations", [])
+    if locations and job.location.strip() and not any(
+        contains_term(full_text, loc) for loc in locations
+    ):
+        return False, "no matching location"
 
-    for exp in profile.get("experience_keywords", []):
-        if contains_term(haystack, exp):
-            score += 8
-            reasons.append(f"experience:{exp}")
+    return True, "passed all mandatory filters"
 
-    job.relevance_score = round(min(score, 100), 1)
-    job.relevance_reasons = ", ".join(reasons[:8])
+
+def score_job(job: Job, profile: dict):
+    """
+    Score reflects ONLY keyword (skill) matches, used purely to rank
+    results that already passed passes_mandatory_filters(). Role, location
+    and experience do not affect this number — they're gates, not points.
+    """
+    haystack = " ".join([job.job_title, job.location, job.description])
+    matched = [kw for kw in profile.get("keywords", []) if contains_term(haystack, kw)]
+
+    job.relevance_score = round(min(len(matched) * 10, 100), 1)
+    job.relevance_reasons = (
+        ", ".join(f"skill:{k}" for k in matched[:10]) if matched
+        else "no specific skill keywords matched (still passed role/location/experience filters)"
+    )
     return job
 
 
@@ -665,11 +696,19 @@ def run():
     for job in discovered_jobs:
         score_job(job, profile)
 
+    # mandatory gates: role, location, experience, exclusions — pass/fail only
+    qualified_jobs = []
+    for job in discovered_jobs:
+        ok, reason = passes_mandatory_filters(job, profile)
+        if ok:
+            qualified_jobs.append(job)
+    logger.info(f"Passed mandatory filters (role/location/experience/exclude): {len(qualified_jobs)}")
+
     relevant_jobs = [
-        j for j in discovered_jobs
+        j for j in qualified_jobs
         if j.relevance_score >= profile.get("min_relevance_score", 30)
     ]
-    logger.info(f"Relevant postings (score >= {profile.get('min_relevance_score', 30)}): {len(relevant_jobs)}")
+    logger.info(f"Relevant postings (keyword score >= {profile.get('min_relevance_score', 30)}): {len(relevant_jobs)}")
 
     new_jobs, updated_jobs, merged_df = classify_and_merge(relevant_jobs, existing_df)
     save_database(merged_df)
