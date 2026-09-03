@@ -528,6 +528,44 @@ def score_job(job: Job, profile: dict):
     return job
 
 
+def deep_verify_experience(job: Job, profile: dict):
+    """
+    Second-pass, stricter experience check — run ONLY on the small final
+    shortlist (jobs that already passed every other gate and are about to
+    be emailed), not on every discovered posting.
+
+    Why this exists: Adzuna/Jooble/etc. only hand us a short teaser
+    snippet, not the full job description. A posting requiring "5-8
+    years" can slip past the coarse filter simply because that line
+    wasn't in the snippet we were given. This fetches the ACTUAL posting
+    page and re-checks against the full text, closing that gap.
+
+    Fails open: if the page can't be fetched (dead link, blocked, slow),
+    the job is kept rather than dropped — we only exclude on a positive,
+    explicit match against an experience requirement above the limit.
+    Returns (keep: bool, reason: str).
+    """
+    max_years = profile.get("max_experience_years")
+    if max_years is None or not job.job_url:
+        return True, "no max_experience_years set or no URL to verify"
+
+    try:
+        resp = http_get(job.job_url)
+        full_text = BeautifulSoup(resp.text, "lxml").get_text(" ", strip=True)
+    except Exception as e:
+        logger.info(f"  Deep-check skipped for '{job.job_title}' @ {job.company} (couldn't fetch page: {e})")
+        return True, "fetch failed, kept (benefit of the doubt)"
+
+    for m in EXPERIENCE_PATTERN.finditer(full_text):
+        lower_bound = int(m.group(1))
+        if lower_bound > max_years:
+            reason = f"full posting requires '{m.group(0).strip()}', above your {max_years}-year limit"
+            logger.info(f"  Deep-check EXCLUDED '{job.job_title}' @ {job.company}: {reason}")
+            return False, reason
+
+    return True, "verified against full posting, within limit"
+
+
 # --------------------------------------------------------------------------
 # EXCEL PERSISTENCE + DEDUPE
 # --------------------------------------------------------------------------
@@ -809,6 +847,19 @@ def run(config_path):
         if j.relevance_score >= profile.get("min_relevance_score", 30)
     ]
     logger.info(f"Relevant postings (keyword score >= {profile.get('min_relevance_score', 30)}): {len(relevant_jobs)}")
+
+    # Deep experience re-check — only on this small final shortlist, since
+    # it fetches each job's actual page (not just the aggregator snippet)
+    # to catch experience requirements the short teaser text missed.
+    if profile.get("max_experience_years") is not None and relevant_jobs:
+        logger.info(f"Deep-verifying experience on {len(relevant_jobs)} shortlisted job(s) against full postings...")
+        verified_jobs = []
+        for job in relevant_jobs:
+            keep, reason = deep_verify_experience(job, profile)
+            if keep:
+                verified_jobs.append(job)
+        logger.info(f"Passed deep experience verification: {len(verified_jobs)} (of {len(relevant_jobs)})")
+        relevant_jobs = verified_jobs
 
     new_jobs, updated_jobs, merged_df = classify_and_merge(relevant_jobs, existing_df)
     save_database(merged_df, db_path)
