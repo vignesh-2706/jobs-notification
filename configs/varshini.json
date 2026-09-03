@@ -122,7 +122,7 @@
     {
       "name": "Arbeitnow - Backend Engineer",
       "source_type": "arbeitnow",
-      "query": "backend",
+      "query": "",
       "enabled": true
     },
     {
@@ -142,7 +142,7 @@
     {
       "name": "RemoteOK - Backend",
       "source_type": "remoteok",
-      "query": "backend",
+      "query": "",
       "enabled": true
     },
     {
