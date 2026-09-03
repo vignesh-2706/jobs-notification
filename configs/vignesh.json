@@ -106,7 +106,7 @@
       "Mid-Level",
       "Experienced Professional"
     ],
-    "min_relevance_score": 0
+    "min_relevance_score": 20
   },
   "email": {
     "recipient_email": "vignesh270600@gmail.com",
