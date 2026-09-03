@@ -326,12 +326,77 @@ def fetch_arbeitnow(company_cfg):
     return jobs
 
 
+def fetch_jooble(company_cfg):
+    """
+    source_type='jooble'. Aggregates from Naukri, Indeed, TimesJobs, and
+    thousands of company sites — strong India coverage, similar role to
+    Adzuna but a different underlying index (worth having both).
+    Needs JOOBLE_API_KEY env var (free signup, no card needed):
+    https://jooble.org/api/about
+    Config fields: 'query' (search term), 'location' (city).
+    """
+    api_key = os.environ.get("JOOBLE_API_KEY")
+    if not api_key:
+        raise ValueError("JOOBLE_API_KEY env var is not set")
+
+    url = f"https://jooble.org/api/{api_key}"
+    payload = {
+        "keywords": company_cfg.get("query", ""),
+        "location": company_cfg.get("location", ""),
+    }
+    resp = SESSION.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    data = resp.json()
+
+    jobs = []
+    for item in data.get("jobs", []):
+        jobs.append(Job(
+            company=item.get("company", "Unknown"),
+            job_title=item.get("title", ""),
+            location=item.get("location", ""),
+            description=item.get("snippet", ""),
+            job_url=item.get("link", ""),
+            source_type="jooble",
+        ))
+    return jobs
+
+
+def fetch_remoteok(company_cfg):
+    """
+    source_type='remoteok'. Free, no API key needed. Remote-first tech
+    jobs board with decent volume and real company postings. Config
+    field: optional 'query' to filter by keyword client-side.
+    """
+    url = "https://remoteok.com/api"
+    data = http_get(url).json()
+    query = company_cfg.get("query", "").lower()
+
+    jobs = []
+    for item in data:
+        title = item.get("position") or item.get("title", "")
+        if not title:
+            continue  # first element of RemoteOK's response is a legal notice, not a job
+        if query and query not in title.lower():
+            continue
+        jobs.append(Job(
+            company=item.get("company", "Unknown"),
+            job_title=title,
+            location=item.get("location", "") or "Remote",
+            description=item.get("description", ""),
+            job_url=item.get("url", ""),
+            source_type="remoteok",
+        ))
+    return jobs
+
+
 SOURCE_CONNECTORS = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
     "generic": fetch_generic,
     "adzuna": fetch_adzuna,
     "arbeitnow": fetch_arbeitnow,
+    "jooble": fetch_jooble,
+    "remoteok": fetch_remoteok,
 }
 
 
