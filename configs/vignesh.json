@@ -17,7 +17,9 @@
       "Full Stack Engineer",
       "Frontend Engineer",
       "Cloud Platform Engineer",
-      "Automation Engineer"
+      "Automation Engineer",
+      "Site Reliability Engineer",
+      "SRE"
     ],
     "keywords": [
       "Python",
@@ -59,7 +61,8 @@
       "Failure Recovery",
       "Retry Handling",
       "API Integration",
-      "Service Discovery"
+      "Service Discovery",
+      "Kubernetes"
     ],
     "preferred_locations": [
       "Bengaluru",
@@ -144,142 +147,162 @@
       "enabled": true
     },
     {
+      "name": "Jooble - Software Engineer Bangalore",
+      "source_type": "jooble",
+      "query": "software engineer",
+      "location": "Bangalore",
+      "enabled": true
+    },
+    {
+      "name": "Jooble - Platform Engineer Bangalore",
+      "source_type": "jooble",
+      "query": "platform engineer",
+      "location": "Bangalore",
+      "enabled": true
+    },
+    {
+      "name": "RemoteOK - Software Engineer",
+      "source_type": "remoteok",
+      "query": "software",
+      "enabled": true
+    },
+    {
       "name": "LinkedIn",
       "career_url": "https://www.linkedin.com/jobs/search-results/?currentJobId=4462167124&keywords=Software%20Engineer%20or%20AI%20Engineer%2C%20on-site%20or%20hybrid&origin=PREFERENCES_LANDING&originToLandingJobPostings=4462167124%2C4459943027%2C4448177868&geoId=104765567",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "SAP",
       "career_url": "https://jobs.sap.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Microsoft",
       "career_url": "https://jobs.careers.microsoft.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Google",
       "career_url": "https://www.google.com/about/careers/applications/jobs/results",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Amazon",
       "career_url": "https://www.amazon.jobs",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "AWS",
       "career_url": "https://aws.amazon.com/careers/",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Oracle",
       "career_url": "https://www.oracle.com/careers/opportunities/engineering-development/",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Cisco",
       "career_url": "https://careers.cisco.com/global/en/india/etr-jobs",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Atlassian",
       "career_url": "https://www.atlassian.com/company/careers/all-jobs",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Adobe",
       "career_url": "https://careers.adobe.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "NVIDIA",
       "career_url": "https://www.nvidia.com/en-us/about-nvidia/careers/",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Intel",
       "career_url": "https://jobs.intel.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "AMD",
       "career_url": "https://careers.amd.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "ServiceNow",
       "career_url": "https://careers.servicenow.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Salesforce",
       "career_url": "https://careers.salesforce.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "VMware by Broadcom",
       "career_url": "https://careers.broadcom.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Red Hat",
       "career_url": "https://www.redhat.com/en/jobs",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "IBM",
       "career_url": "https://www.ibm.com/careers",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Dell Technologies",
       "career_url": "https://jobs.dell.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "HPE",
       "career_url": "https://careers.hpe.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Siemens",
       "career_url": "https://jobs.siemens.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "TCS",
       "career_url": "https://ibegin.tcs.com/iBegin/",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Infosys",
       "career_url": "https://www.infosys.com/careers/apply.html",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Wipro",
@@ -309,13 +332,13 @@
       "name": "LTIMindtree",
       "career_url": "https://careers.ltimindtree.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Tech Mahindra",
       "career_url": "https://careers.techmahindra.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Capgemini",
@@ -351,7 +374,7 @@
       "name": "Zoho",
       "career_url": "https://www.zoho.com/careers/",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Freshworks",
@@ -369,19 +392,19 @@
       "name": "Swiggy",
       "career_url": "https://careers.swiggy.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Paytm",
       "career_url": "https://jobs.paytm.com",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Qualcomm",
       "career_url": "https://www.qualcomm.com/company/careers",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "S&P Global",
@@ -393,7 +416,7 @@
       "name": "GlobalLogic (Hitachi)",
       "career_url": "https://www.globallogic.com/careers/",
       "source_type": "generic",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Persistent Systems",
