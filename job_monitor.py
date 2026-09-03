@@ -333,7 +333,8 @@ def fetch_jooble(company_cfg):
     Adzuna but a different underlying index (worth having both).
     Needs JOOBLE_API_KEY env var (free signup, no card needed):
     https://jooble.org/api/about
-    Config fields: 'query' (search term), 'location' (city).
+    Config fields: 'query' (search term), 'location' (city — leave blank
+    or use a broad value like "India" if city-level matching returns 0).
     """
     api_key = os.environ.get("JOOBLE_API_KEY")
     if not api_key:
@@ -347,6 +348,14 @@ def fetch_jooble(company_cfg):
     resp = SESSION.post(url, json=payload, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     data = resp.json()
+
+    if "errorMessage" in data:
+        logger.warning(f"Jooble API returned an error for {company_cfg['name']}: {data['errorMessage']}")
+    total_count = data.get("totalCount", "unknown")
+    logger.info(
+        f"  [diagnostic] Jooble reports totalCount={total_count} for "
+        f"keywords='{payload['keywords']}' location='{payload['location']}'"
+    )
 
     jobs = []
     for item in data.get("jobs", []):
@@ -366,10 +375,18 @@ def fetch_remoteok(company_cfg):
     source_type='remoteok'. Free, no API key needed. Remote-first tech
     jobs board with decent volume and real company postings. Config
     field: optional 'query' to filter by keyword client-side.
+
+    Known issue: RemoteOK sometimes rate-limits/blocks requests from cloud
+    datacenter IPs (which is what GitHub Actions runners use), returning
+    just their legal-notice entry with no real jobs. If the diagnostic log
+    below consistently shows raw_items=1, that's what's happening — not a
+    bug in this code, but a limitation of running from CI infrastructure.
     """
     url = "https://remoteok.com/api"
     data = http_get(url).json()
     query = company_cfg.get("query", "").lower()
+
+    logger.info(f"  [diagnostic] RemoteOK raw_items={len(data)} before filtering on query='{query}'")
 
     jobs = []
     for item in data:
