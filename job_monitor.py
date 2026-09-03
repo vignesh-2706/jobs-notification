@@ -33,7 +33,7 @@ import hashlib
 import logging
 import smtplib
 import unicodedata
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -96,13 +96,6 @@ class Job:
     content_hash: str = ""
     relevance_score: float = 0.0
     relevance_reasons: str = ""
-    # True only when we actually fetched and scanned the real posting page
-    # for experience requirements. False means the experience gate ran
-    # against a short/possibly-incomplete snippet only (typically Adzuna/
-    # Jooble, whose real posting pages we cannot fetch — see
-    # deep_verify_experience). This is surfaced in the email so "no
-    # experience mentioned" isn't mistaken for "confirmed safe."
-    experience_verified: bool = False
 
 
 def normalize_text(value):
@@ -167,9 +160,16 @@ def http_get(url, params=None):
 
 # --------------------------------------------------------------------------
 # CONNECTORS (one function per source_type -> list[Job])
+#
+# Every connector now takes (company_cfg, profile) so that source types
+# which search by keyword (adzuna, jooble) can loop over the person's own
+# job_roles list instead of needing one config entry per role. That means
+# configs/*.json only needs ONE "Adzuna - Bangalore" style entry per
+# location, not one per role — the roles already live in profile.job_roles
+# and this is the single place that reads them for querying.
 # --------------------------------------------------------------------------
 
-def fetch_greenhouse(company_cfg):
+def fetch_greenhouse(company_cfg, profile):
     """source_type='greenhouse', needs 'board_token' (from boards.greenhouse.io/<token>)."""
     token = company_cfg.get("board_token")
     if not token:
@@ -186,12 +186,11 @@ def fetch_greenhouse(company_cfg):
             description=desc,
             job_url=item.get("absolute_url", ""),
             source_type="greenhouse",
-            experience_verified=True,  # API provides real description text, not just a teaser
         ))
     return jobs
 
 
-def fetch_lever(company_cfg):
+def fetch_lever(company_cfg, profile):
     """source_type='lever', needs 'lever_site' (from jobs.lever.co/<site>)."""
     site = company_cfg.get("lever_site")
     if not site:
@@ -208,7 +207,6 @@ def fetch_lever(company_cfg):
             description=item.get("descriptionPlain", "") or item.get("description", ""),
             job_url=item.get("hostedUrl", ""),
             source_type="lever",
-            experience_verified=True,  # API provides real description text, not just a teaser
         ))
     return jobs
 
@@ -227,22 +225,17 @@ JOB_LIKE_TERMS = [
 MAX_DETAIL_FETCHES_PER_COMPANY = 25  # keeps runtime sane even if a page has many links
 
 
-def fetch_generic(company_cfg):
+def fetch_generic(company_cfg, profile):
     """
     Best-effort connector for any plain career page. Works well for
     server-rendered pages; on JS-only single-page apps (common for large
     MNC portals) it may return few or zero results — that's a limitation
     of not running a real browser, not a bug. See README.md.
 
-    IMPORTANT: after collecting candidate title+link pairs from the
-    listing page, this now also fetches each individual posting's page to
-    pull real description text (capped at MAX_DETAIL_FETCHES_PER_COMPANY).
-    Without this, "generic" sources had a title and a URL but NO
-    description at all — meaning the experience-year filter and the
-    keyword relevance score had nothing to check against except a job
-    title, which almost never states years of experience. This is what
-    makes experience filtering actually work for these sources instead of
-    silently having no data to check.
+    Also fetches each individual posting's page (capped at
+    MAX_DETAIL_FETCHES_PER_COMPANY) to pull real description text, so the
+    experience-year filter and keyword scoring have something to check
+    besides a bare title.
     """
     career_url = company_cfg["career_url"]
     resp = http_get(career_url)
@@ -277,164 +270,168 @@ def fetch_generic(company_cfg):
             source_type="generic",
         ))
 
-    # Fetch real page content for each candidate so there's actual text to
-    # check experience/keywords against. Every fetch failure is silently
-    # tolerated — that job just keeps its empty description and falls back
-    # to "no info = don't penalize" behavior, same as before this change.
+    # Fetch real page content for each candidate. Any fetch failure is
+    # silently tolerated — that job just keeps its empty description.
     for job in jobs[:MAX_DETAIL_FETCHES_PER_COMPANY]:
         try:
             detail_resp = http_get(job.job_url)
-            page_text = BeautifulSoup(detail_resp.text, "lxml").get_text(" ", strip=True)
-            # No length cap here on purpose — the actual "requirements"
-            # section is often well past the first few thousand characters
-            # of nav/header/cookie-banner text, and truncating risks
-            # scanning right past the exact line we care about.
-            job.description = page_text
-            job.experience_verified = True
+            job.description = BeautifulSoup(detail_resp.text, "lxml").get_text(" ", strip=True)
         except Exception:
-            pass  # leave description empty — treated as "unstated", not as a failure
+            pass
 
     return jobs
 
 
-def fetch_adzuna(company_cfg):
+def fetch_adzuna(company_cfg, profile):
     """
     source_type='adzuna'. Aggregates real postings from Naukri, Indeed, Shine
     and thousands of company sites via Adzuna's free developer API.
     Needs ADZUNA_APP_ID and ADZUNA_APP_KEY env vars (free signup, no card
     needed): https://developer.adzuna.com/
-    Config fields: 'query' (search term), 'location' (city), optional
-    'country' (defaults to 'in' for India).
+
+    Config fields: 'location' (city), optional 'country' (defaults to
+    'in'). Queries are built from profile.job_roles automatically — one
+    API call per role — so you only need one company entry per location,
+    not one per role.
     """
     app_id = os.environ.get("ADZUNA_APP_ID")
     app_key = os.environ.get("ADZUNA_APP_KEY")
     if not app_id or not app_key:
         raise ValueError("ADZUNA_APP_ID / ADZUNA_APP_KEY env vars are not set")
 
-    query = company_cfg.get("query", "")
     location = company_cfg.get("location", "")
     country = company_cfg.get("country", "in")
-
-    url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
-    params = {
-        "app_id": app_id,
-        "app_key": app_key,
-        "what": query,
-        "where": location,
-        "results_per_page": 30,
-        "content-type": "application/json",
-    }
-    data = http_get(url, params=params).json()
+    roles = profile.get("job_roles") or [company_cfg.get("query", "")]
 
     jobs = []
-    for item in data.get("results", []):
-        jobs.append(Job(
-            company=item.get("company", {}).get("display_name", "Unknown"),
-            job_title=item.get("title", ""),
-            location=item.get("location", {}).get("display_name", ""),
-            description=item.get("description", ""),
-            job_url=item.get("redirect_url", ""),
-            source_type="adzuna",
-        ))
+    seen_urls = set()
+    for role in roles:
+        url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
+        params = {
+            "app_id": app_id,
+            "app_key": app_key,
+            "what": role,
+            "where": location,
+            "results_per_page": 30,
+            "content-type": "application/json",
+        }
+        try:
+            data = http_get(url, params=params).json()
+        except Exception as e:
+            logger.warning(f"  Adzuna query '{role}' failed: {e}")
+            continue
+
+        for item in data.get("results", []):
+            job_url = item.get("redirect_url", "")
+            if job_url in seen_urls:
+                continue
+            seen_urls.add(job_url)
+            jobs.append(Job(
+                company=item.get("company", {}).get("display_name", "Unknown"),
+                job_title=item.get("title", ""),
+                location=item.get("location", {}).get("display_name", ""),
+                description=item.get("description", ""),
+                job_url=job_url,
+                source_type="adzuna",
+            ))
     return jobs
 
 
-def fetch_arbeitnow(company_cfg):
+def fetch_arbeitnow(company_cfg, profile):
     """
     source_type='arbeitnow'. Free, no API key needed. Global tech-job board,
-    good for remote roles. Config field: optional 'query' to filter by
-    keyword client-side (the API itself doesn't support search params).
+    good for remote roles. Pulls the full board — role matching happens
+    later in passes_mandatory_filters() against profile.job_roles, so no
+    per-role config or query field is needed here.
     """
     url = "https://www.arbeitnow.com/api/job-board-api"
     data = http_get(url).json()
-    query = company_cfg.get("query", "").lower()
 
     jobs = []
     for item in data.get("data", []):
-        title = item.get("title", "")
-        if query and query not in title.lower():
-            continue
         jobs.append(Job(
             company=item.get("company_name", "Unknown"),
-            job_title=title,
+            job_title=item.get("title", ""),
             location=item.get("location", "") or ("Remote" if item.get("remote") else ""),
             description=item.get("description", ""),
             job_url=item.get("url", ""),
             source_type="arbeitnow",
-            experience_verified=True,  # API provides real description text, not just a teaser
         ))
     return jobs
 
 
-def fetch_jooble(company_cfg):
+def fetch_jooble(company_cfg, profile):
     """
     source_type='jooble'. Aggregates from Naukri, Indeed, TimesJobs, and
     thousands of company sites — strong India coverage, similar role to
     Adzuna but a different underlying index (worth having both).
     Needs JOOBLE_API_KEY env var (free signup, no card needed):
     https://jooble.org/api/about
-    Config fields: 'query' (search term), 'location' (city — leave blank
-    or use a broad value like "India" if city-level matching returns 0).
+
+    Config field: 'location' (city — leave blank or use a broad value like
+    "India" if city-level matching returns 0). Like Adzuna, queries are
+    built from profile.job_roles — one call per role, one config entry per
+    location.
     """
     api_key = os.environ.get("JOOBLE_API_KEY")
     if not api_key:
         raise ValueError("JOOBLE_API_KEY env var is not set")
 
+    location = company_cfg.get("location", "")
+    roles = profile.get("job_roles") or [company_cfg.get("query", "")]
     url = f"https://jooble.org/api/{api_key}"
-    payload = {
-        "keywords": company_cfg.get("query", ""),
-        "location": company_cfg.get("location", ""),
-    }
-    resp = SESSION.post(url, json=payload, timeout=REQUEST_TIMEOUT)
-    resp.raise_for_status()
-    data = resp.json()
-
-    if "errorMessage" in data:
-        logger.warning(f"Jooble API returned an error for {company_cfg['name']}: {data['errorMessage']}")
-    total_count = data.get("totalCount", "unknown")
-    logger.info(
-        f"  [diagnostic] Jooble reports totalCount={total_count} for "
-        f"keywords='{payload['keywords']}' location='{payload['location']}'"
-    )
 
     jobs = []
-    for item in data.get("jobs", []):
-        jobs.append(Job(
-            company=item.get("company", "Unknown"),
-            job_title=item.get("title", ""),
-            location=item.get("location", ""),
-            description=item.get("snippet", ""),
-            job_url=item.get("link", ""),
-            source_type="jooble",
-        ))
+    seen_urls = set()
+    for role in roles:
+        payload = {"keywords": role, "location": location}
+        try:
+            resp = SESSION.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.warning(f"  Jooble query '{role}' failed: {e}")
+            continue
+
+        if "errorMessage" in data:
+            logger.warning(f"Jooble API error for '{role}': {data['errorMessage']}")
+
+        for item in data.get("jobs", []):
+            link = item.get("link", "")
+            if link in seen_urls:
+                continue
+            seen_urls.add(link)
+            jobs.append(Job(
+                company=item.get("company", "Unknown"),
+                job_title=item.get("title", ""),
+                location=item.get("location", ""),
+                description=item.get("snippet", ""),
+                job_url=link,
+                source_type="jooble",
+            ))
     return jobs
 
 
-def fetch_remoteok(company_cfg):
+def fetch_remoteok(company_cfg, profile):
     """
     source_type='remoteok'. Free, no API key needed. Remote-first tech
-    jobs board with decent volume and real company postings. Config
-    field: optional 'query' to filter by keyword client-side.
+    jobs board. Pulls the full board — role matching happens later in
+    passes_mandatory_filters(), so no query field is needed here.
 
     Known issue: RemoteOK sometimes rate-limits/blocks requests from cloud
-    datacenter IPs (which is what GitHub Actions runners use), returning
-    just their legal-notice entry with no real jobs. If the diagnostic log
-    below consistently shows raw_items=1, that's what's happening — not a
-    bug in this code, but a limitation of running from CI infrastructure.
+    datacenter IPs (which is what GitHub Actions runners use). If the
+    diagnostic log below consistently shows raw_items=1, that's why.
     """
     url = "https://remoteok.com/api"
     data = http_get(url).json()
-    query = company_cfg.get("query", "").lower()
 
-    logger.info(f"  [diagnostic] RemoteOK raw_items={len(data)} before filtering on query='{query}'")
+    logger.info(f"  [diagnostic] RemoteOK raw_items={len(data)}")
 
     jobs = []
     for item in data:
         title = item.get("position") or item.get("title", "")
         if not title:
             continue  # first element of RemoteOK's response is a legal notice, not a job
-        if query and query not in title.lower():
-            continue
         jobs.append(Job(
             company=item.get("company", "Unknown"),
             job_title=title,
@@ -442,7 +439,6 @@ def fetch_remoteok(company_cfg):
             description=item.get("description", ""),
             job_url=item.get("url", ""),
             source_type="remoteok",
-            experience_verified=True,  # API provides real description text, not just a teaser
         ))
     return jobs
 
@@ -458,7 +454,7 @@ SOURCE_CONNECTORS = {
 }
 
 
-def discover_all_jobs(companies_cfg):
+def discover_all_jobs(companies_cfg, profile):
     all_jobs = []
     status = []
 
@@ -471,7 +467,7 @@ def discover_all_jobs(companies_cfg):
         connector = SOURCE_CONNECTORS.get(source_type, fetch_generic)
 
         try:
-            jobs = connector(company_cfg)
+            jobs = connector(company_cfg, profile)
             all_jobs.extend(jobs)
             status.append((name, "OK", len(jobs), ""))
             logger.info(f"{name:30s} -> {len(jobs):3d} postings found")
@@ -525,20 +521,15 @@ def passes_mandatory_filters(job: Job, profile: dict):
     all — none of this contributes to the score, it's strictly qualify /
     disqualify. Returns (passes: bool, reason: str).
 
-    Order is intentional: experience is checked FIRST, since it's the
-    single biggest reason a posting should be thrown out regardless of
-    how well it otherwise matches. Policy: if experience isn't mentioned
-    anywhere in the title/location/description, that's treated as a PASS
-    (unstated is not the same as disqualifying) — only an EXPLICIT
-    requirement above your limit excludes a job.
+    Policy: if experience isn't mentioned anywhere in the title/location/
+    description, that's treated as a PASS (unstated is not the same as
+    disqualifying) — only an EXPLICIT requirement above your limit
+    excludes a job.
     """
     title = job.job_title
     full_text = " ".join([job.job_title, job.location, job.description])
 
     # 1a. Numeric experience cutoff — catches "5+ years", "3-5 years" etc.
-    #     Only fires when a number is actually present, so postings with
-    #     no stated experience (still common even after the deeper fetch)
-    #     are not penalized — silence is treated as acceptable, per policy.
     max_years = profile.get("max_experience_years")
     if max_years is not None:
         for m in EXPERIENCE_PATTERN.finditer(full_text):
@@ -547,8 +538,6 @@ def passes_mandatory_filters(job: Job, profile: dict):
                 return False, f"excluded (needs {m.group(0).strip()}, above your {max_years}-year limit)"
 
     # 1b. Title-level suffix — catches "<Role> II", "<Role> III" etc.
-    #     generically, regardless of what the role name in front of it is.
-    #     This is also an experience signal (a title-encoded one).
     if LEVEL_SUFFIX_PATTERN.search(title.strip()):
         return False, f"excluded (title suggests a senior level: '{title.strip()}')"
 
@@ -595,20 +584,15 @@ def deep_verify_experience(job: Job, profile: dict):
     """
     Second-pass, stricter experience check — run ONLY on the small final
     shortlist (jobs that already passed every other gate and are about to
-    be emailed), not on every discovered posting.
+    be emailed), not on every discovered posting. Fetches the real posting
+    page when possible and re-runs the same regex against the full text.
 
-    Only attempted for source types where job_url is a REAL, directly
-    fetchable page (generic company sites, greenhouse, lever). Skipped
-    entirely for adzuna/jooble — their job_url is a tracking/redirect link
-    through their own domain that returns 403 to any non-browser request,
-    every single time. Attempting it there just burns a request and a log
-    line for a fetch that can never succeed; for those, the coarse check
-    against the API's own description field (already run earlier) is the
-    best available signal.
+    Skipped for adzuna/jooble, whose job_url is a tracking/redirect link
+    that returns 403 to non-browser requests — the earlier check against
+    their API description field is the best available signal there.
 
-    Fails open: if the page can't be fetched (dead link, blocked, slow),
-    the job is kept rather than dropped — we only exclude on a positive,
-    explicit match against an experience requirement above the limit.
+    Fails open: if the page can't be fetched, the job is kept rather than
+    dropped — we only exclude on a positive, explicit match.
     Returns (keep: bool, reason: str).
     """
     max_years = profile.get("max_experience_years")
@@ -617,19 +601,14 @@ def deep_verify_experience(job: Job, profile: dict):
 
     NOT_DIRECTLY_FETCHABLE = {"adzuna", "jooble"}
     if job.source_type in NOT_DIRECTLY_FETCHABLE:
-        # experience_verified stays whatever it already was (False by
-        # default for these sources) — we're being honest that we could
-        # only check their short snippet, not the real posting.
-        return True, f"{job.source_type} URLs are tracking redirects, not fetchable — relying on coarse check only"
+        return True, f"{job.source_type} URLs are tracking redirects, not fetchable"
 
     try:
         resp = http_get(job.job_url)
         full_text = BeautifulSoup(resp.text, "lxml").get_text(" ", strip=True)
     except Exception as e:
         logger.info(f"  Deep-check skipped for '{job.job_title}' @ {job.company} (couldn't fetch page: {e})")
-        return True, "fetch failed, kept (benefit of the doubt)"
-
-    job.experience_verified = True  # we did get real, full page text to check against
+        return True, "fetch failed, kept"
 
     for m in EXPERIENCE_PATTERN.finditer(full_text):
         lower_bound = int(m.group(1))
@@ -726,16 +705,13 @@ def build_email_body_plain(new_jobs, updated_jobs, run_status, profile_name):
     def section(title, jobs):
         out = [title, "-" * len(title), ""]
         for i, job in enumerate(sorted(jobs, key=lambda j: -j.relevance_score), 1):
-            flag = "" if job.experience_verified else "  [!] Experience not independently verified — check listing before applying"
             out += [
                 f"{i}. [{job.relevance_score:.0f}] {job.company} - {job.job_title}",
                 f"   Location: {job.location or 'Not specified'}",
                 f"   Why: {job.relevance_reasons or 'n/a'}",
                 f"   Apply: {job.job_url}",
+                "",
             ]
-            if flag:
-                out.append(flag)
-            out.append("")
         return out
 
     if new_jobs:
@@ -757,14 +733,6 @@ def build_email_body_html(new_jobs, updated_jobs, run_status, profile_name):
     """Clean HTML digest — this is what most inboxes (Gmail, Outlook, etc.) will show."""
 
     def job_card(job):
-        warning_html = ""
-        if not job.experience_verified:
-            warning_html = """
-            <div style="margin-top:8px;padding:6px 10px;background:#fff4e5;border-left:3px solid #e8a33d;
-                        font-size:11.5px;color:#8a5a00;border-radius:4px;">
-              &#9888; Experience requirement not independently verified — this source's data is a short
-              snippet, not the full posting. Please check the listing itself before assuming it fits.
-            </div>"""
         return f"""
         <tr>
           <td style="padding:14px 16px;border:1px solid #e2e2e2;border-radius:8px;
@@ -778,7 +746,6 @@ def build_email_body_html(new_jobs, updated_jobs, run_status, profile_name):
             <div style="font-size:12px;color:#888;margin-top:6px;">
               Match score: <b>{job.relevance_score:.0f}</b> &middot; {_html_escape(job.relevance_reasons or "n/a")}
             </div>
-            {warning_html}
             <div style="margin-top:10px;">
               <a href="{_html_escape(job.job_url)}"
                  style="display:inline-block;padding:8px 14px;background:#111;color:#fff;
@@ -907,7 +874,7 @@ def run(config_path):
     existing_df = load_database(db_path)
     logger.info(f"Existing records: {len(existing_df)}")
 
-    discovered_jobs, run_status = discover_all_jobs(config["companies"])
+    discovered_jobs, run_status = discover_all_jobs(config["companies"], profile)
     logger.info(f"Total postings discovered: {len(discovered_jobs)}")
 
     # de-duplicate within this run + compute identity
