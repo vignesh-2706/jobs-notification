@@ -215,12 +215,25 @@ JOB_LIKE_TERMS = [
 ]
 
 
+MAX_DETAIL_FETCHES_PER_COMPANY = 25  # keeps runtime sane even if a page has many links
+
+
 def fetch_generic(company_cfg):
     """
     Best-effort connector for any plain career page. Works well for
     server-rendered pages; on JS-only single-page apps (common for large
     MNC portals) it may return few or zero results — that's a limitation
     of not running a real browser, not a bug. See README.md.
+
+    IMPORTANT: after collecting candidate title+link pairs from the
+    listing page, this now also fetches each individual posting's page to
+    pull real description text (capped at MAX_DETAIL_FETCHES_PER_COMPANY).
+    Without this, "generic" sources had a title and a URL but NO
+    description at all — meaning the experience-year filter and the
+    keyword relevance score had nothing to check against except a job
+    title, which almost never states years of experience. This is what
+    makes experience filtering actually work for these sources instead of
+    silently having no data to check.
     """
     career_url = company_cfg["career_url"]
     resp = http_get(career_url)
@@ -254,6 +267,18 @@ def fetch_generic(company_cfg):
             job_url=absolute_url,
             source_type="generic",
         ))
+
+    # Fetch real page content for each candidate so there's actual text to
+    # check experience/keywords against. Every fetch failure is silently
+    # tolerated — that job just keeps its empty description and falls back
+    # to "no info = don't penalize" behavior, same as before this change.
+    for job in jobs[:MAX_DETAIL_FETCHES_PER_COMPANY]:
+        try:
+            detail_resp = http_get(job.job_url)
+            page_text = BeautifulSoup(detail_resp.text, "lxml").get_text(" ", strip=True)
+            job.description = page_text[:4000]  # cap length, we only need enough to pattern-match
+        except Exception:
+            pass  # leave description empty — treated as "unstated", not as a failure
 
     return jobs
 
@@ -483,21 +508,21 @@ def passes_mandatory_filters(job: Job, profile: dict):
     Hard pass/fail gate. A job must clear ALL of these to be considered at
     all — none of this contributes to the score, it's strictly qualify /
     disqualify. Returns (passes: bool, reason: str).
+
+    Order is intentional: experience is checked FIRST, since it's the
+    single biggest reason a posting should be thrown out regardless of
+    how well it otherwise matches. Policy: if experience isn't mentioned
+    anywhere in the title/location/description, that's treated as a PASS
+    (unstated is not the same as disqualifying) — only an EXPLICIT
+    requirement above your limit excludes a job.
     """
     title = job.job_title
     full_text = " ".join([job.job_title, job.location, job.description])
 
-    # 1. Exclude keywords — checked across title + location + description,
-    #    not just the title (this was the original bug: "5+ years" written
-    #    in a description was invisible to a title-only check).
-    for term in profile.get("exclude_keywords", []):
-        if contains_term(full_text, term):
-            return False, f"excluded (matched '{term}')"
-
-    # 2. Numeric experience cutoff — catches "5+ years", "3-5 years" etc.
-    #    even when that exact phrase isn't in your exclude_keywords list.
-    #    Only fires when a number is actually present, so postings with no
-    #    stated experience (common on scraped listings) aren't punished.
+    # 1a. Numeric experience cutoff — catches "5+ years", "3-5 years" etc.
+    #     Only fires when a number is actually present, so postings with
+    #     no stated experience (still common even after the deeper fetch)
+    #     are not penalized — silence is treated as acceptable, per policy.
     max_years = profile.get("max_experience_years")
     if max_years is not None:
         for m in EXPERIENCE_PATTERN.finditer(full_text):
@@ -505,10 +530,16 @@ def passes_mandatory_filters(job: Job, profile: dict):
             if lower_bound > max_years:
                 return False, f"excluded (needs {m.group(0).strip()}, above your {max_years}-year limit)"
 
-    # 2b. Title-level suffix — catches "<Role> II", "<Role> III" etc.
+    # 1b. Title-level suffix — catches "<Role> II", "<Role> III" etc.
     #     generically, regardless of what the role name in front of it is.
+    #     This is also an experience signal (a title-encoded one).
     if LEVEL_SUFFIX_PATTERN.search(title.strip()):
         return False, f"excluded (title suggests a senior level: '{title.strip()}')"
+
+    # 2. Exclude keywords — checked across title + location + description.
+    for term in profile.get("exclude_keywords", []):
+        if contains_term(full_text, term):
+            return False, f"excluded (matched '{term}')"
 
     # 3. Role — job title must contain at least one of your target roles.
     roles = profile.get("job_roles", [])
