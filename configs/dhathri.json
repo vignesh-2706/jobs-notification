@@ -125,14 +125,14 @@
       "name": "Jooble - Software Engineer Bangalore",
       "source_type": "jooble",
       "query": "software engineer",
-      "location": "Bangalore",
+      "location": "India",
       "enabled": true
     },
     {
       "name": "Jooble - Devops Engineer Bangalore",
       "source_type": "jooble",
       "query": "devops engineer",
-      "location": "Bangalore",
+      "location": "India",
       "enabled": true
     },
     {
