@@ -1,5 +1,5 @@
 {
-  "_readme": "This is one PERSON's config — put it in configs/<name>.json. profile = their roles/keywords, email.recipient_email = where THEIR alerts go. GMAIL_ADDRESS / GMAIL_APP_PASSWORD / ADZUNA_* stay as shared repo secrets set once by the repo owner — this file does not need any passwords.",
+  "_readme": "This is one PERSON's config — put it in configs/<name>.json. profile = their roles/keywords, email.recipient_email = where THEIR alerts go. GMAIL_ADDRESS / GMAIL_APP_PASSWORD / ADZUNA_* / JOOBLE_* stay as shared repo secrets set once by the repo owner — this file does not need any passwords. Adzuna and Jooble entries below query ALL of profile.job_roles automatically (one API call per role), so you only need one entry per location, not one per role.",
   "profile": {
     "name": "Vignesh",
     "job_roles": [
@@ -117,53 +117,26 @@
   },
   "companies": [
     {
-      "name": "Adzuna - Software Engineer Bangalore",
+      "name": "Adzuna - Bangalore",
       "source_type": "adzuna",
-      "query": "software engineer",
       "location": "Bangalore",
       "country": "in",
       "enabled": true
     },
     {
-      "name": "Adzuna - Platform Engineer Bangalore",
-      "source_type": "adzuna",
-      "query": "platform engineer",
-      "location": "Bangalore",
-      "country": "in",
+      "name": "Jooble - India",
+      "source_type": "jooble",
+      "location": "India",
       "enabled": true
     },
     {
-      "name": "Adzuna - AI Engineer Bangalore",
-      "source_type": "adzuna",
-      "query": "AI engineer",
-      "location": "Bangalore",
-      "country": "in",
-      "enabled": true
-    },
-    {
-      "name": "Arbeitnow - Software Engineer",
+      "name": "Arbeitnow - Global",
       "source_type": "arbeitnow",
-      "query": "",
       "enabled": true
     },
     {
-      "name": "Jooble - Software Engineer Bangalore",
-      "source_type": "jooble",
-      "query": "software engineer",
-      "location": "India",
-      "enabled": true
-    },
-    {
-      "name": "Jooble - Platform Engineer Bangalore",
-      "source_type": "jooble",
-      "query": "platform engineer",
-      "location": "India",
-      "enabled": true
-    },
-    {
-      "name": "RemoteOK - Software Engineer",
+      "name": "RemoteOK - Global",
       "source_type": "remoteok",
-      "query": "",
       "enabled": true
     },
     {
