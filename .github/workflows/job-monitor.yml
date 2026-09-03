@@ -2,7 +2,7 @@ name: Job Monitor
 
 on:
   schedule:
-    # 04:00 UTC = 9:30 AM IST, every day. Edit the cron to change the time.
+    # Runs every 12 hours
     - cron: "0 */12 * *"
   workflow_dispatch:
     inputs:
@@ -13,7 +13,7 @@ on:
         type: string
 
 permissions:
-  contents: write   # needed so the workflow can commit updated history files
+  contents: write # needed so the workflow can commit updated history files
 
 jobs:
   check-jobs:
@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # ensures full git history for commit and push operations
 
       - name: Set up Python
         uses: actions/setup-python@v5
