@@ -68,7 +68,7 @@
     "preferred_locations": ["Bengaluru", "Bangalore", "Hyderabad", "India"],
     "experience_keywords": ["fresher", "entry level", "graduate", "0-1 years", "0-2 years", "1-2 years", "intern", "trainee"],
     "max_experience_years": 2,
-    "exclude_keywords": ["senior", "staff engineer", "principal", "lead", "director", "10+ years", "8+ years", "5+ years"],
+   "exclude_keywords": ["senior", "staff engineer", "principal", "lead", "director", "10+ years", "8+ years", "5+ years", "SDE 2", "SDE-2", "SDE II", "SDE 3", "SDE-3", "SDE III", "Software Engineer II", "Software Engineer III", "Software Engineer 2", "Software Engineer 3", "SE II", "SE-2", "SE 2", "Mid-Level", "Experienced Professional"]
     "min_relevance_score": 20
   },
 
