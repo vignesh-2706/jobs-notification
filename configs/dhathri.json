@@ -1,5 +1,5 @@
 {
-  "_readme": "This is one PERSON's config — see README.md.",
+  "_readme": "This is one PERSON's config — see README.md. Adzuna and Jooble entries below query ALL of profile.job_roles automatically (one API call per role), so you only need one entry per location, not one per role.",
   "profile": {
     "name": "Dhathri",
     "job_roles": [
@@ -92,53 +92,26 @@
   },
   "companies": [
     {
-      "name": "Adzuna - Software Engineer Bangalore",
+      "name": "Adzuna - Bangalore",
       "source_type": "adzuna",
-      "query": "software engineer",
       "location": "Bangalore",
       "country": "in",
       "enabled": true
     },
     {
-      "name": "Adzuna - DevOps Engineer Bangalore",
-      "source_type": "adzuna",
-      "query": "devops engineer",
-      "location": "Bangalore",
-      "country": "in",
+      "name": "Jooble - India",
+      "source_type": "jooble",
+      "location": "India",
       "enabled": true
     },
     {
-      "name": "Adzuna - Automation Engineer Bangalore",
-      "source_type": "adzuna",
-      "query": "automation engineer",
-      "location": "Bangalore",
-      "country": "in",
-      "enabled": true
-    },
-    {
-      "name": "Arbeitnow - Java Developer",
+      "name": "Arbeitnow - Global",
       "source_type": "arbeitnow",
-      "query": "",
       "enabled": true
     },
     {
-      "name": "Jooble - Software Engineer Bangalore",
-      "source_type": "jooble",
-      "query": "software engineer",
-      "location": "India",
-      "enabled": true
-    },
-    {
-      "name": "Jooble - Devops Engineer Bangalore",
-      "source_type": "jooble",
-      "query": "devops engineer",
-      "location": "India",
-      "enabled": true
-    },
-    {
-      "name": "RemoteOK - Java",
+      "name": "RemoteOK - Global",
       "source_type": "remoteok",
-      "query": "",
       "enabled": true
     },
     {
