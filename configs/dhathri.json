@@ -118,7 +118,7 @@
     {
       "name": "Arbeitnow - Java Developer",
       "source_type": "arbeitnow",
-      "query": "java",
+      "query": "",
       "enabled": true
     },
     {
@@ -138,7 +138,7 @@
     {
       "name": "RemoteOK - Java",
       "source_type": "remoteok",
-      "query": "java",
+      "query": "",
       "enabled": true
     },
     {
