@@ -96,6 +96,13 @@ class Job:
     content_hash: str = ""
     relevance_score: float = 0.0
     relevance_reasons: str = ""
+    # True only when we actually fetched and scanned the real posting page
+    # for experience requirements. False means the experience gate ran
+    # against a short/possibly-incomplete snippet only (typically Adzuna/
+    # Jooble, whose real posting pages we cannot fetch — see
+    # deep_verify_experience). This is surfaced in the email so "no
+    # experience mentioned" isn't mistaken for "confirmed safe."
+    experience_verified: bool = False
 
 
 def normalize_text(value):
@@ -179,6 +186,7 @@ def fetch_greenhouse(company_cfg):
             description=desc,
             job_url=item.get("absolute_url", ""),
             source_type="greenhouse",
+            experience_verified=True,  # API provides real description text, not just a teaser
         ))
     return jobs
 
@@ -200,6 +208,7 @@ def fetch_lever(company_cfg):
             description=item.get("descriptionPlain", "") or item.get("description", ""),
             job_url=item.get("hostedUrl", ""),
             source_type="lever",
+            experience_verified=True,  # API provides real description text, not just a teaser
         ))
     return jobs
 
@@ -276,7 +285,12 @@ def fetch_generic(company_cfg):
         try:
             detail_resp = http_get(job.job_url)
             page_text = BeautifulSoup(detail_resp.text, "lxml").get_text(" ", strip=True)
-            job.description = page_text[:4000]  # cap length, we only need enough to pattern-match
+            # No length cap here on purpose — the actual "requirements"
+            # section is often well past the first few thousand characters
+            # of nav/header/cookie-banner text, and truncating risks
+            # scanning right past the exact line we care about.
+            job.description = page_text
+            job.experience_verified = True
         except Exception:
             pass  # leave description empty — treated as "unstated", not as a failure
 
@@ -347,6 +361,7 @@ def fetch_arbeitnow(company_cfg):
             description=item.get("description", ""),
             job_url=item.get("url", ""),
             source_type="arbeitnow",
+            experience_verified=True,  # API provides real description text, not just a teaser
         ))
     return jobs
 
@@ -427,6 +442,7 @@ def fetch_remoteok(company_cfg):
             description=item.get("description", ""),
             job_url=item.get("url", ""),
             source_type="remoteok",
+            experience_verified=True,  # API provides real description text, not just a teaser
         ))
     return jobs
 
@@ -601,6 +617,9 @@ def deep_verify_experience(job: Job, profile: dict):
 
     NOT_DIRECTLY_FETCHABLE = {"adzuna", "jooble"}
     if job.source_type in NOT_DIRECTLY_FETCHABLE:
+        # experience_verified stays whatever it already was (False by
+        # default for these sources) — we're being honest that we could
+        # only check their short snippet, not the real posting.
         return True, f"{job.source_type} URLs are tracking redirects, not fetchable — relying on coarse check only"
 
     try:
@@ -609,6 +628,8 @@ def deep_verify_experience(job: Job, profile: dict):
     except Exception as e:
         logger.info(f"  Deep-check skipped for '{job.job_title}' @ {job.company} (couldn't fetch page: {e})")
         return True, "fetch failed, kept (benefit of the doubt)"
+
+    job.experience_verified = True  # we did get real, full page text to check against
 
     for m in EXPERIENCE_PATTERN.finditer(full_text):
         lower_bound = int(m.group(1))
@@ -705,13 +726,16 @@ def build_email_body_plain(new_jobs, updated_jobs, run_status, profile_name):
     def section(title, jobs):
         out = [title, "-" * len(title), ""]
         for i, job in enumerate(sorted(jobs, key=lambda j: -j.relevance_score), 1):
+            flag = "" if job.experience_verified else "  [!] Experience not independently verified — check listing before applying"
             out += [
                 f"{i}. [{job.relevance_score:.0f}] {job.company} - {job.job_title}",
                 f"   Location: {job.location or 'Not specified'}",
                 f"   Why: {job.relevance_reasons or 'n/a'}",
                 f"   Apply: {job.job_url}",
-                "",
             ]
+            if flag:
+                out.append(flag)
+            out.append("")
         return out
 
     if new_jobs:
@@ -733,6 +757,14 @@ def build_email_body_html(new_jobs, updated_jobs, run_status, profile_name):
     """Clean HTML digest — this is what most inboxes (Gmail, Outlook, etc.) will show."""
 
     def job_card(job):
+        warning_html = ""
+        if not job.experience_verified:
+            warning_html = """
+            <div style="margin-top:8px;padding:6px 10px;background:#fff4e5;border-left:3px solid #e8a33d;
+                        font-size:11.5px;color:#8a5a00;border-radius:4px;">
+              &#9888; Experience requirement not independently verified — this source's data is a short
+              snippet, not the full posting. Please check the listing itself before assuming it fits.
+            </div>"""
         return f"""
         <tr>
           <td style="padding:14px 16px;border:1px solid #e2e2e2;border-radius:8px;
@@ -746,6 +778,7 @@ def build_email_body_html(new_jobs, updated_jobs, run_status, profile_name):
             <div style="font-size:12px;color:#888;margin-top:6px;">
               Match score: <b>{job.relevance_score:.0f}</b> &middot; {_html_escape(job.relevance_reasons or "n/a")}
             </div>
+            {warning_html}
             <div style="margin-top:10px;">
               <a href="{_html_escape(job.job_url)}"
                  style="display:inline-block;padding:8px 14px;background:#111;color:#fff;
