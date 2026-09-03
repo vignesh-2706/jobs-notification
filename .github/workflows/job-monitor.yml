@@ -4,7 +4,13 @@ on:
   schedule:
     # 04:00 UTC = 9:30 AM IST, every day. Edit the cron to change the time.
     - cron: "0 4 * * *"
-  workflow_dispatch: {}   # adds a manual "Run workflow" button on GitHub
+  workflow_dispatch:
+    inputs:
+      person:
+        description: "Run for one person only (filename without .json), or leave as 'all'"
+        required: false
+        default: "all"
+        type: string
 
 permissions:
   contents: write   # needed so the workflow can commit updated history files
@@ -24,16 +30,27 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run job monitor for every person in configs/
+      - name: Run job monitor
         env:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
+          PERSON_FILTER: ${{ github.event.inputs.person || 'all' }}
         run: |
           set -e
-          for f in configs/*.json; do
+          if [ "$PERSON_FILTER" != "all" ]; then
+            TARGETS="configs/${PERSON_FILTER}.json"
+            if [ ! -f "$TARGETS" ]; then
+              echo "No such config: $TARGETS"
+              exit 1
+            fi
+          else
+            TARGETS="configs/*.json"
+          fi
+
+          for f in $TARGETS; do
             base=$(basename "$f")
             if [[ "$base" == _* ]]; then
               echo "Skipping template/hidden file: $f"
