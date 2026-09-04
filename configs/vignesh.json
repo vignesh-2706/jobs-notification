@@ -141,9 +141,12 @@
     },
     {
       "name": "LinkedIn",
-      "career_url": "https://www.linkedin.com/jobs/search-results/?currentJobId=4462167124&keywords=Software%20Engineer%20or%20AI%20Engineer%2C%20on-site%20or%20hybrid&origin=PREFERENCES_LANDING&originToLandingJobPostings=4462167124%2C4459943027%2C4448177868&geoId=104765567",
-      "source_type": "generic",
-      "enabled": false
+      "source_type": "linkedin",
+      "enabled": true,
+      "search_url_template": "https://www.linkedin.com/jobs/search/?f_E=2&f_TPR=r86400&geoId=102713980&keywords={keyword}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true",
+      "query_from": "profile.job_roles",
+      "one_search_per_role": true,
+      "note": "The code should URL-encode each role, open one LinkedIn search URL per role, extract job cards, and deduplicate by LinkedIn job ID/URL."
     },
     {
       "name": "SAP",
