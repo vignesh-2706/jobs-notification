@@ -3,7 +3,7 @@ name: Job Monitor
 on:
   schedule:
     # Runs every 12 hours
-   - cron: "0 */12 * * *"
+   - cron: ""
   workflow_dispatch:
     inputs:
       person:
