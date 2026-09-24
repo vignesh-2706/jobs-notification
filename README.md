@@ -1,114 +1,587 @@
-# Job Monitor — automated job-alert emails (multi-person)
+````markdown
+# Job Monitor
 
-Checks career pages + Adzuna/Arbeitnow every day, scores postings against
-each person's own roles/keywords, and emails only new matches. One repo
-can now run this for **you and any number of friends** — they don't set
-up anything; they just get a config file with their name on it.
+> Automated, configurable job discovery and email notification pipeline built with Python and GitHub Actions.
 
-## How it works
+Job Monitor is a lightweight automation system that collects job postings from multiple sources, filters them against configurable candidate preferences, ranks relevant opportunities, and sends email alerts only for new matches.
 
-- `configs/` holds one JSON file per person (their roles, keywords,
-  locations, experience limit, and their email address).
-- `data/` holds one history file per person, auto-created, used to avoid
-  re-emailing the same posting twice.
-- The GitHub Action loops over every file in `configs/` and runs the
-  whole pipeline once per person, in a single workflow run.
-- Only **you** (the repo owner) hold the shared secrets — your Gmail
-  sending account and Adzuna API keys. Friends never touch secrets,
-  never fork anything, never see the repo at all if you don't want them to.
+The system is designed to support **multiple candidates from a single repository**, with each candidate having an independent configuration and job-history database.
 
-## One-time setup (you, the repo owner)
+---
 
-**1. Get a Gmail "App Password"**
-   - Turn on 2-Step Verification: https://myaccount.google.com/security
-   - Create an app password: https://myaccount.google.com/apppasswords
+## ✨ Overview
 
-**2. Get free Adzuna API keys** (optional but recommended — much cleaner
-   results than career-page scraping): https://developer.adzuna.com/
+Searching for jobs across multiple company career pages and job boards can be repetitive and time-consuming.
 
-**3. Add repo secrets** (Settings → Secrets and variables → Actions):
+This project automates that workflow:
 
-   | Secret name | Value |
-   |---|---|
-   | `GMAIL_ADDRESS` | your Gmail address |
-   | `GMAIL_APP_PASSWORD` | the 16-character app password |
-   | `ADZUNA_APP_ID` | from the Adzuna dashboard |
-   | `ADZUNA_APP_KEY` | from the Adzuna dashboard |
+```text
+                    ┌──────────────────────┐
+                    │ Candidate Config     │
+                    │ roles / skills /      │
+                    │ locations / experience│
+                    └──────────┬───────────┘
+                               │
+                               ▼
+┌────────────────┐     ┌──────────────────────┐
+│ Career Pages   │────▶│                      │
+└────────────────┘     │    Job Monitor       │
+                       │                      │
+┌────────────────┐     │  Collect → Filter →  │
+│ Adzuna API     │────▶│  Score → Deduplicate │
+└────────────────┘     └──────────┬───────────┘
+                                  │
+┌────────────────┐                │
+│ Arbeitnow API  │────────────────┘
+└────────────────┘                │
+                                  ▼
+                         ┌─────────────────┐
+                         │ Email Notification│
+                         └─────────────────┘
 
-   Notice there's no `RECIPIENT_EMAIL` secret anymore — each person's
-   destination address now lives in *their own* config file instead,
-   since an email address isn't a credential.
+              GitHub Actions runs the pipeline daily
+````
 
-**4. Turn it on** — Actions tab → enable workflows if prompted → "Job
-   Monitor" → "Run workflow" to test.
+The system can run automatically every day using **GitHub Actions**, without requiring a local machine or server to remain running.
 
-## Adding a friend (takes you two minutes, they do nothing)
+---
 
-1. Copy `configs/_template.json` to `configs/<their-name>.json`.
-2. Fill in their `job_roles`, `keywords`, `preferred_locations`,
-   `max_experience_years`, `exclude_keywords`, and `email.recipient_email`
-   — base this on their resume/target roles.
-3. Commit it.
+## 🚀 Key Features
 
-That's it — next run, they're included automatically, with their own
-separate history file so their matches never mix with anyone else's.
-To stop alerting someone, just delete their file from `configs/`.
+* **Multi-source job collection**
 
-## How matching works
+  * Company career pages
+  * Adzuna API
+  * Arbeitnow API
 
-Every posting must pass ALL of these to be considered at all (hard
-filters, not scoring):
-- Doesn't contain anything in `exclude_keywords` (title, description, or
-  location — checked everywhere, not just the title)
-- Doesn't require more than `max_experience_years` (a number-detecting
-  filter catches phrasing like "5+ years" or "3-5 years" even if that
-  exact phrase isn't in your `exclude_keywords` list)
-- Job title contains at least one of `job_roles`
-- Location matches one of `preferred_locations` (only enforced when the
-  posting actually states a location)
+* **Configurable candidate profiles**
 
-Only jobs that pass all of the above get a **score**, and that score is
-based purely on how many `keywords` (skills) it matches — used only to
-rank/sort, not to decide inclusion. `min_relevance_score` is the minimum
-keyword score to bother reporting.
+  * Target job roles
+  * Skills / keywords
+  * Preferred locations
+  * Maximum experience level
+  * Excluded keywords
+  * Notification email
 
-## Known limits (please read)
+* **Rule-based job filtering**
 
-- **Company career pages, not one unified job board.** Large companies
-  running JavaScript single-page apps (Google, Microsoft, Amazon, most
-  Workday portals) often return few or zero results from a plain HTTP
-  scraper — that's a structural limitation, not a bug.
-- **Adzuna/Arbeitnow are the more reliable sources** — they're real
-  aggregator APIs (not scraped), with full descriptions, so filters work
-  best on those. Consider leaning on them more than the `generic`
-  company connectors if accuracy matters more than coverage.
-- Some `generic` company sites will show up as "FAILED" in the run log
-  (403 Forbidden, DNS errors, bot detection) — this is expected for a
-  handful of sites and doesn't affect the others.
-- Treat this as a first-pass filter, not a replacement for occasionally
-  checking the big-tech career pages yourself.
+  * Role matching
+  * Location matching
+  * Experience filtering
+  * Exclusion rules
 
-## Running it locally instead (optional)
+* **Keyword-based relevance scoring**
+
+  * Jobs that pass the hard filters are ranked based on matching skills and keywords.
+
+* **Duplicate prevention**
+
+  * Previously processed jobs are stored in a per-candidate history file.
+  * The same posting is not repeatedly emailed.
+
+* **Automated execution**
+
+  * GitHub Actions runs the complete pipeline on a scheduled basis.
+
+* **Multi-person support**
+
+  * One repository can manage multiple independent candidate profiles.
+  * Each candidate has their own configuration and job history.
+
+* **Centralized secret management**
+
+  * API credentials and the email sender credentials are stored as GitHub Actions secrets.
+  * Candidate configuration does not contain API credentials.
+
+---
+
+## 🏗️ Architecture
+
+The application follows a simple pipeline-oriented architecture:
+
+```text
+                    GitHub Actions
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │ Load candidate  │
+                 │ configuration   │
+                 └────────┬────────┘
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │ Job Collectors  │
+                 │                 │
+                 │ • Career Pages  │
+                 │ • Adzuna        │
+                 │ • Arbeitnow     │
+                 └────────┬────────┘
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │ Normalize Jobs  │
+                 └────────┬────────┘
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │ Hard Filtering  │
+                 │                 │
+                 │ Role            │
+                 │ Location        │
+                 │ Experience      │
+                 │ Exclusions      │
+                 └────────┬────────┘
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │ Relevance Score │
+                 │ Keyword matches │
+                 └────────┬────────┘
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │ Deduplication   │
+                 │ Job history     │
+                 └────────┬────────┘
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │ Email Alerts    │
+                 └─────────────────┘
+```
+
+---
+
+## 🔎 Matching Strategy
+
+The matching pipeline intentionally separates **hard filtering** from **relevance scoring**.
+
+### 1. Hard Filters
+
+A job must first satisfy all required conditions.
+
+#### Role
+
+The job title must contain at least one configured target role.
+
+Example:
+
+```json
+"job_roles": [
+  "Software Engineer",
+  "Backend Engineer",
+  "Python Developer"
+]
+```
+
+#### Location
+
+If a posting specifies a location, it must match one of the candidate's preferred locations.
+
+#### Experience
+
+The system filters out jobs requiring more experience than the candidate's configured limit.
+
+It handles common patterns such as:
+
+```text
+5+ years
+3-5 years
+4 years of experience
+```
+
+#### Excluded Keywords
+
+Jobs containing configured exclusion terms are removed before scoring.
+
+These checks can be applied across the available:
+
+* Job title
+* Description
+* Location
+
+---
+
+### 2. Relevance Scoring
+
+Only jobs that pass the hard filters are scored.
+
+The relevance score is based on the number of configured skills/keywords appearing in the job posting.
+
+For example:
+
+```text
+Candidate keywords:
+
+Python
+FastAPI
+REST APIs
+AWS
+SQL
+Docker
+GitHub Actions
+```
+
+A posting matching:
+
+```text
+Python
+REST APIs
+SQL
+AWS
+```
+
+receives a higher relevance score than one matching only:
+
+```text
+Python
+```
+
+The score is used to **rank matching jobs**, rather than replacing the hard eligibility filters.
+
+---
+
+## 👥 Multi-Person Configuration
+
+The repository supports multiple independent candidate profiles.
+
+```text
+configs/
+├── _template.json
+├── vignesh.json
+├── friend_1.json
+└── friend_2.json
+```
+
+Each configuration defines that candidate's:
+
+* Target roles
+* Skills
+* Locations
+* Experience limit
+* Excluded keywords
+* Email destination
+
+Example:
+
+```json
+{
+  "job_roles": [
+    "Software Engineer",
+    "Backend Engineer"
+  ],
+  "keywords": [
+    "Python",
+    "FastAPI",
+    "SQL",
+    "AWS"
+  ],
+  "preferred_locations": [
+    "Bengaluru",
+    "Hyderabad"
+  ],
+  "max_experience_years": 2,
+  "exclude_keywords": [
+    "Senior",
+    "Staff",
+    "Principal"
+  ],
+  "email": {
+    "recipient_email": "candidate@example.com"
+  }
+}
+```
+
+The workflow automatically discovers the configuration files and processes each candidate independently.
+
+---
+
+## 🗂️ Project Structure
+
+```text
+jobs-notification/
+│
+├── .github/
+│   └── workflows/
+│       └── job-monitor.yml
+│
+├── configs/
+│   ├── _template.json
+│   └── <candidate>.json
+│
+├── data/
+│   └── <candidate>_jobs.xlsx
+│
+├── job_monitor.py
+├── requirements.txt
+└── README.md
+```
+
+### Components
+
+| Component            | Purpose                                                                   |
+| -------------------- | ------------------------------------------------------------------------- |
+| `job_monitor.py`     | Core collection, filtering, scoring, deduplication and notification logic |
+| `configs/`           | Candidate-specific matching configuration                                 |
+| `data/`              | Per-candidate job history used for deduplication                          |
+| `.github/workflows/` | Scheduled GitHub Actions automation                                       |
+| `requirements.txt`   | Python dependencies                                                       |
+
+---
+
+## ⚙️ Automation with GitHub Actions
+
+The system is designed to run without a continuously running server.
+
+GitHub Actions:
+
+1. Starts the scheduled workflow.
+2. Loads the repository secrets.
+3. Discovers candidate configuration files.
+4. Runs the monitoring pipeline for each candidate.
+5. Collects and filters job postings.
+6. Removes previously processed postings.
+7. Sends email notifications for new matches.
+8. Updates the job history.
+
+This turns the project into a small **serverless scheduled automation pipeline**.
+
+---
+
+## 🔐 Configuration & Secrets
+
+Sensitive credentials are not stored directly in the source code.
+
+The workflow uses GitHub Actions Secrets for:
+
+```text
+GMAIL_ADDRESS
+GMAIL_APP_PASSWORD
+ADZUNA_APP_ID
+ADZUNA_APP_KEY
+```
+
+Candidate-specific configuration contains only matching preferences and the destination email address.
+
+> **Security note:** Never commit API keys, Gmail app passwords, access tokens, or other credentials to the repository.
+
+---
+
+## 🛠️ Technology Stack
+
+### Backend / Automation
+
+* Python
+* REST APIs
+* JSON
+* Excel-based job history
+
+### Automation / CI/CD
+
+* GitHub Actions
+* Scheduled workflows
+* Environment variables
+* GitHub Actions Secrets
+
+### Data Sources
+
+* Adzuna API
+* Arbeitnow API
+* Company career pages
+
+### Email
+
+* Gmail SMTP
+* App Password authentication
+
+---
+
+## 💻 Running Locally
+
+### 1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
+```
+
+### 2. Configure environment variables
+
+Linux/macOS:
+
+```bash
 export GMAIL_ADDRESS="you@gmail.com"
 export GMAIL_APP_PASSWORD="xxxxxxxxxxxxxxxx"
-export ADZUNA_APP_ID="..."
-export ADZUNA_APP_KEY="..."
+export ADZUNA_APP_ID="your_app_id"
+export ADZUNA_APP_KEY="your_app_key"
+```
+
+Windows PowerShell:
+
+```powershell
+$env:GMAIL_ADDRESS="you@gmail.com"
+$env:GMAIL_APP_PASSWORD="xxxxxxxxxxxxxxxx"
+$env:ADZUNA_APP_ID="your_app_id"
+$env:ADZUNA_APP_KEY="your_app_key"
+```
+
+### 3. Run the monitor
+
+```bash
 python job_monitor.py configs/vignesh.json
 ```
 
-Run it once per config file to check everyone, or loop over `configs/*.json`
-like the GitHub Action does.
+The same program can be executed for any candidate configuration.
 
-## Files in this project
+---
 
-| File/folder | Purpose |
-|---|---|
-| `configs/*.json` | One file per person — the only thing that changes when adding/editing someone |
-| `configs/_template.json` | Blank starting point for a new person (ignored by the workflow) |
-| `data/*_jobs.xlsx` | Auto-generated per-person history/dedupe database |
-| `job_monitor.py` | The whole program, takes a config path as its one argument |
-| `requirements.txt` | Python dependencies |
-| `.github/workflows/job-monitor.yml` | Daily automation, loops over every config, one commit at the end |
+## 📈 Why This Project?
+
+This project was built to solve a practical automation problem while applying several software engineering concepts:
+
+* API integration
+* Data normalization
+* Rule-based filtering
+* Text matching
+* Relevance scoring
+* Deduplication
+* Configuration-driven architecture
+* Scheduled automation
+* CI/CD workflows
+* Secret management
+* Automated email delivery
+
+Rather than building a one-off job scraper, the system was designed around **reusability and configuration**, allowing the same pipeline to serve different candidate profiles without changing the core application.
+
+---
+
+## 🔮 Possible Future Improvements
+
+Potential extensions include:
+
+* Browser automation for JavaScript-heavy career portals
+* More job-source integrations
+* Persistent database storage instead of spreadsheet-based history
+* Semantic/embedding-based job matching
+* Resume-aware relevance scoring
+* Web dashboard for candidate configurations and job history
+* Retry and failure monitoring
+* Job-status tracking
+* Improved notification summaries
+
+---
+
+## ⚠️ Limitations
+
+This project is intended as a **first-pass job discovery and filtering system**, not a replacement for checking company career pages directly.
+
+Some company career sites use JavaScript-heavy applications, bot protection, or other mechanisms that make simple HTTP-based collection unreliable.
+
+Aggregator APIs such as Adzuna and Arbeitnow generally provide more structured job descriptions and therefore work better with the filtering and scoring pipeline.
+
+The system may therefore miss jobs from certain career portals.
+
+---
+
+## 👤 Author
+
+**Vignesh G**
+
+M.Tech — Computer Science & Information Security
+Software / Platform Engineering | Agentic AI | Automation
+
+GitHub: [@vignesh-2706](https://github.com/vignesh-2706)
+
+---
+
+## 📄 License
+
+This project is intended primarily as a personal engineering project and demonstration of software automation, API integration, and CI/CD practices.
+
+````
+
+### A few changes I'd make before you publish
+
+There are **three things I'd check carefully** in the repository before recruiters start looking at it:
+
+**1. Make absolutely sure `data/` contains no personal information.**
+
+Your README says `data/*_jobs.xlsx` is generated per person, and the repository currently exposes a `data/` directory.
+
+If those Excel files contain things like:
+
+- personal email addresses
+- job-search history
+- friends' names
+- private job preferences
+- recruiter/company information you don't want public
+
+don't commit them.
+
+I'd preferably make the generated data directory contain only:
+
+```text
+data/
+└── .gitkeep
+````
+
+and add:
+
+```gitignore
+data/*
+!data/.gitkeep
+```
+
+Then the GitHub Action generates the actual files during execution.
+
+**2. Be careful with `configs/*.json`.**
+
+Because your design puts `email.recipient_email` in each person's config, a public repository could expose everyone's email address. Your README currently explicitly describes this architecture.
+
+For a **public recruiter-facing repo**, I'd strongly consider keeping only:
+
+```text
+configs/
+└── _template.json
+```
+
+public, and having your private deployment repository contain the actual candidate configurations.
+
+That gives you a much cleaner public architecture:
+
+```text
+PUBLIC REPO
+├── job_monitor.py
+├── _template.json
+├── workflow
+├── requirements.txt
+└── README.md
+
+PRIVATE CONFIG
+├── vignesh.json
+├── friend1.json
+└── friend2.json
+```
+
+**3. Don't advertise “friends” in the first sentence.**
+
+The engineering feature is actually **configuration-driven multi-profile automation**. That's much more impressive professionally than:
+
+> “you and any number of friends”
+
+A recruiter sees:
+
+> **Configuration-driven, multi-profile job monitoring pipeline**
+
+and immediately understands the engineering concept.
+
+---
+
+### One more resume-related point
+
+This project is actually worth keeping on your resume, but I would describe it as:
+
+> **Built a configuration-driven job monitoring pipeline using Python and GitHub Actions, integrating external job APIs, rule-based filtering, relevance scoring, deduplication, and automated email notifications.**
+
+That gives you legitimate keywords for **Python + APIs + automation + CI/CD + GitHub Actions + software engineering**, without pretending that you have deep Docker/Kubernetes/AWS experience.
+
+Your public repository can then demonstrate those claims directly. [Job Monitor — GitHub repository](https://github.com/vignesh-2706/jobs-notification?utm_source=chatgpt.com)
